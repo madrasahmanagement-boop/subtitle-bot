@@ -1,20 +1,32 @@
-
-                          
 import os
 import logging
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
-from google import genai
+import google.generativeai as genai
 
-# Setup Logging
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
-# Fetch Environment Variables
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
-# Initialize Gemini Client
-client = genai.Client(api_key=GEMINI_API_KEY)
+genai.configure(api_key=GEMINI_API_KEY)
+
+# Dynamically find an available Flash model to avoid 404/not found errors
+def get_working_model():
+    try:
+        available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+        # Prefer flash models first
+        for m in available_models:
+            if 'flash' in m:
+                return genai.GenerativeModel(m)
+        if available_models:
+            return genai.GenerativeModel(available_models[0])
+    except Exception as e:
+        logging.error(f"Error listing models: {e}")
+    # Fallback default
+    return genai.GenerativeModel('gemini-1.5-flash')
+
+model = get_working_model()
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("স্বাগতম! যেকোনো ভাষার .srt সাবটাইটেল পাঠালে তা প্রাকৃতিক ও সাবলীল বাংলায় অনুবাদ হয়ে যাবে।")
@@ -43,10 +55,7 @@ Avoid literal or mechanical translation. Make it sound natural to native Bengali
 SRT Content:
 {srt_content}"""
 
-        response = client.models.generate_content(
-            model='gemini-2.5-flash',
-            contents=prompt,
-        )
+        response = model.generate_content(prompt)
         translated_text = response.text
 
         output_filename = f"translated_{input_filename}"
@@ -56,7 +65,6 @@ SRT Content:
         with open(output_filename, 'rb') as f:
             await update.message.reply_document(document=f, caption="✅ আপনার সাবলীল বাংলা অনুবাদ প্রস্তুত!")
 
-        # Cleanup
         os.remove(input_filename)
         os.remove(output_filename)
         await status_msg.delete()
@@ -72,4 +80,4 @@ def main():
 
 if __name__ == '__main__':
     main()
-    
+                                               
