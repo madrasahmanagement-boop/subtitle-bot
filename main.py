@@ -2,7 +2,7 @@ import os
 import logging
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
-from google import genai
+import google.generativeai as genai
 
 # Setup Logging
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
@@ -11,8 +11,21 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
-# Initialize Client
-client = genai.Client(api_key=GEMINI_API_KEY)
+genai.configure(api_key=GEMINI_API_KEY)
+
+# Function to get an active working model automatically
+def get_working_model():
+    try:
+        models = genai.list_models()
+        for m in models:
+            if 'generateContent' in m.supported_generation_methods:
+                # Pickup any available model automatically
+                return genai.GenerativeModel(m.name)
+    except Exception as e:
+        logging.error(f"Error fetching model list: {e}")
+    
+    # Direct fallback model
+    return genai.GenerativeModel('gemini-1.5-flash')
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("স্বাগতম! যেকোনো ভাষার .srt সাবটাইটেল পাঠালে তা প্রাকৃতিক ও সাবলীল বাংলায় অনুবাদ হয়ে যাবে।")
@@ -41,10 +54,9 @@ Avoid literal or mechanical translation. Make it sound natural to native Bengali
 SRT Content:
 {srt_content}"""
 
-        response = client.models.generate_content(
-            model='gemini-1.5-flash',
-            contents=prompt,
-        )
+        # Dynamically fetch working model for each request
+        active_model = get_working_model()
+        response = active_model.generate_content(prompt)
         translated_text = response.text
 
         output_filename = f"translated_{input_filename}"
@@ -70,3 +82,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+    
