@@ -2,7 +2,7 @@ import os
 import logging
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
-import google.generativeai as genai
+from google import genai
 
 # Setup Logging
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
@@ -11,9 +11,8 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
-# Configure Gemini
-genai.configure(api_key=GEMINI_API_KEY)
-model = genai.GenerativeModel('gemini-1.5-flash')
+# Initialize Client
+client = genai.Client(api_key=GEMINI_API_KEY)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("স্বাগতম! যেকোনো ভাষার .srt সাবটাইটেল পাঠালে তা প্রাকৃতিক ও সাবলীল বাংলায় অনুবাদ হয়ে যাবে।")
@@ -42,7 +41,10 @@ Avoid literal or mechanical translation. Make it sound natural to native Bengali
 SRT Content:
 {srt_content}"""
 
-        response = model.generate_content(prompt)
+        response = client.models.generate_content(
+            model='gemini-1.5-flash',
+            contents=prompt,
+        )
         translated_text = response.text
 
         output_filename = f"translated_{input_filename}"
@@ -68,4 +70,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-    
