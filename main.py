@@ -1,34 +1,16 @@
 import os
+import requests
 import logging
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
-import google.generativeai as genai
 
-# Setup Logging
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
-# Fetch Environment Variables
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
-genai.configure(api_key=GEMINI_API_KEY)
-
-# Function to get an active working model automatically
-def get_working_model():
-    try:
-        models = genai.list_models()
-        for m in models:
-            if 'generateContent' in m.supported_generation_methods:
-                # Pickup any available model automatically
-                return genai.GenerativeModel(m.name)
-    except Exception as e:
-        logging.error(f"Error fetching model list: {e}")
-    
-    # Direct fallback model
-    return genai.GenerativeModel('gemini-1.5-flash')
-
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("স্বাগতম! যেকোনো ভাষার .srt সাবটাইটেল পাঠালে তা প্রাকৃতিক ও সাবলীল বাংলায় অনুবাদ হয়ে যাবে।")
+    await update.message.reply_text("স্বাগতম! যেকোনো .srt ফাইল পাঠালে তা বাংলায় অনুবাদ করে দেওয়া হবে।")
 
 async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     document = update.message.document
@@ -54,10 +36,20 @@ Avoid literal or mechanical translation. Make it sound natural to native Bengali
 SRT Content:
 {srt_content}"""
 
-        # Dynamically fetch working model for each request
-        active_model = get_working_model()
-        response = active_model.generate_content(prompt)
-        translated_text = response.text
+        # Direct REST API endpoint call
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+        headers = {"Content-Type": "application/json"}
+        payload = {
+            "contents": [{"parts": [{"text": prompt}]}]
+        }
+
+        response = requests.post(url, json=payload, headers=headers)
+        res_data = response.json()
+
+        if "candidates" in res_data and len(res_data["candidates"]) > 0:
+            translated_text = res_data["candidates"][0]["content"]["parts"][0]["text"]
+        else:
+            raise Exception(f"API Error: {res_data.get('error', {}).get('message', 'Unknown error')}")
 
         output_filename = f"translated_{input_filename}"
         with open(output_filename, 'w', encoding='utf-8') as f:
@@ -66,7 +58,6 @@ SRT Content:
         with open(output_filename, 'rb') as f:
             await update.message.reply_document(document=f, caption="✅ আপনার সাবলীল বাংলা অনুবাদ প্রস্তুত!")
 
-        # Cleanup
         os.remove(input_filename)
         os.remove(output_filename)
         await status_msg.delete()
@@ -82,4 +73,4 @@ def main():
 
 if __name__ == '__main__':
     main()
-    
+                                                                        
